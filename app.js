@@ -31,17 +31,17 @@ const url = 'https://api.moguding.net:9000'
 app.use(koaBody());
 // 连接数据库
 const connection = mysql2.createConnection({
-    host: "",
-    user: "",
-    password: "",
-    database: ""
+    host: "127.0.0.1",
+    user: "root",
+    password: "admin",
+    database: "admin"
 })
 
 
 // 获取登陆存数据库
 const Ltoken = async (username, password, isUser) => {
     //获取
-    let token, userid, resInfo
+    let token, userid, resInfo, isStudent
     // 发送请求 将数据获取
     // 发送 POST 请求
     await axios({
@@ -54,14 +54,19 @@ const Ltoken = async (username, password, isUser) => {
         }
     }).then((res) => {
         resInfo = res.data
-        if (res.data.code !== 500) {
+        isStudent = true
+        if (res.data.code == 200) {
             let { data } = res.data
             token = data.token
             userid = data.userId
-            if (isUser.length == 1) {
-                connection.promise().query(`UPDATE user SET  password = "${password}",isWrong = "0", token = "${data.token}" WHERE userId = "${data.userId}"`)
-            } else if (isUser.length == 0) {
-                connection.promise().query(`INSERT INTO user (userId,username,phone,gender,token,schoolName,depName,majorName,className,studentNumber,grade,password) VALUES (${data.userId},"${data.orgJson.userName}","${data.phone}","${data.gender}","${data.token}","${data.orgJson.schoolName}","${data.orgJson.depName}","${data.orgJson.majorName}","${data.orgJson.className}",${data.orgJson.studentNumber},"${data.orgJson.grade}","${password}")`);
+            if (data.userType == "profile") {
+                isStudent = false
+            } else {
+                if (isUser.length == 1) {
+                    connection.promise().query(`UPDATE user SET  password = "${password}",isWrong = "0", token = "${data.token}" WHERE userId = "${data.userId}"`)
+                } else if (isUser.length == 0) {
+                    connection.promise().query(`INSERT INTO user (userId,username,phone,gender,token,schoolName,depName,majorName,className,studentNumber,grade,password) VALUES (${data.userId},"${data.orgJson.userName}","${data.phone}","${data.gender}","${data.token}","${data.orgJson.schoolName}","${data.orgJson.depName}","${data.orgJson.majorName}","${data.orgJson.className}",${data.orgJson.studentNumber},"${data.orgJson.grade}","${password}")`);
+                }
             }
         } else {
             // 如果账号密码错误
@@ -71,7 +76,7 @@ const Ltoken = async (username, password, isUser) => {
         }
     });
 
-    return { token, userid }
+    return { token, userid, isStudent }
 }
 
 // 获取事件id
@@ -100,14 +105,16 @@ const getplanId = async (token, userid) => {
 
 // 重登陆
 const login = async (type, userId, phone, password, isLogin = false) => {
+    // console.log(phone)
     //接收数据
     let [isUser] = await connection.promise().query(`SELECT * FROM user WHERE phone = "${phone}"`);
-    let token, userid, planId, isok
+    let token, userid, planId, isok, isStudent
     await Ltoken(phone, password, isUser).then((result) => {
         token = result.token
         userid = result.userid
+        isStudent = result.isStudent
     })
-    if (token !== undefined || userid !== undefined) {
+    if (token !== undefined && userid !== undefined && isStudent) {
         await getplanId(token, userid).then((result) => {
             planId = result
             isok = {
@@ -116,9 +123,16 @@ const login = async (type, userId, phone, password, isLogin = false) => {
             }
         })
     } else {
-        isok = {
-            code: 500,
-            msg: "账号密码错误"
+        if (!isStudent) {
+            isok = {
+                code: 500,
+                msg: "此功能只能用于学生"
+            }
+        } else {
+            isok = {
+                code: 500,
+                msg: "账号密码错误"
+            }
         }
     }
     if (isLogin) {
@@ -197,7 +211,7 @@ router.post("/addUser", async (ctx, next) => {
         ctx.body = res
     })
 })
-// 获取密码错误的用户
+
 router.get('/getWrong', async (ctx, next) => {
     // 设置跨域
     ctx.set("Access-Control-Allow-Origin", "*")
@@ -209,4 +223,4 @@ router.get('/getWrong', async (ctx, next) => {
 app.use(router.routes());
 
 // 开启服务器
-app.listen(8880);
+app.listen(5279);
